@@ -38,6 +38,8 @@ int main() {
             power += token[right];
             score--;
             right--;
+        } else { // if nothing can do, break
+            break;
         }
     }
 
