@@ -1,0 +1,295 @@
+#include <algorithm>
+#include <cmath>
+#include <fstream>
+#include <iostream>
+#include <queue>
+#include <set>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+using namespace std;
+
+class DeploymentOptimizer {
+   private:
+    int maxDiskCapacity;
+    vector<int> agentMemory;
+    vector<vector<int>> teams;
+    vector<int> serverAssignments;
+    int numAgents;
+    int numTeams;
+
+    // Helper function to calculate cost for a team
+    int calculateTeamCost(const vector<int>& team) {
+        set<int> serversUsed;
+        for (int agentId : team) {
+            serversUsed.insert(serverAssignments[agentId]);
+        }
+        int numServers = serversUsed.size();
+        return (numServers - 1) * (numServers - 1);
+    }
+
+    // Calculate total cost across all teams
+    int calculateTotalCost() {
+        int totalCost = 0;
+        for (const auto& team : teams) {
+            totalCost += calculateTeamCost(team);
+        }
+        return totalCost;
+    }
+
+    // Check if assignment is valid (respects memory constraints)
+    bool isValidAssignment(vector<int>& serverLoads) {
+        for (int load : serverLoads) {
+            if (load > maxDiskCapacity) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // Perform 2-way partitioning
+    void twoWayPartition() {
+        vector<int> serverLoads(2, 0);
+
+        // Initial greedy assignment
+        for (int i = 0; i < numAgents; i++) {
+            if (serverLoads[0] <= serverLoads[1] &&
+                serverLoads[0] + agentMemory[i] <= maxDiskCapacity) {
+                serverAssignments[i] = 0;
+                serverLoads[0] += agentMemory[i];
+            } else if (serverLoads[1] + agentMemory[i] <= maxDiskCapacity) {
+                serverAssignments[i] = 1;
+                serverLoads[1] += agentMemory[i];
+            } else {
+                // If we can't assign to either server, try to swap with
+                // existing assignments
+                bool assigned = false;
+                for (int j = 0; j < i && !assigned; j++) {
+                    int oldServer = serverAssignments[j];
+                    int newLoad0 = serverLoads[0];
+                    int newLoad1 = serverLoads[1];
+
+                    if (oldServer == 0) {
+                        newLoad0 -= agentMemory[j];
+                        newLoad0 += agentMemory[i];
+                        if (newLoad0 <= maxDiskCapacity) {
+                            serverLoads[0] = newLoad0;
+                            serverAssignments[i] = 0;
+                            assigned = true;
+                        }
+                    } else {
+                        newLoad1 -= agentMemory[j];
+                        newLoad1 += agentMemory[i];
+                        if (newLoad1 <= maxDiskCapacity) {
+                            serverLoads[1] = newLoad1;
+                            serverAssignments[i] = 1;
+                            assigned = true;
+                        }
+                    }
+                }
+                if (!assigned) {
+                    // If we still can't assign, try to split across both
+                    // servers
+                    serverAssignments[i] =
+                        serverLoads[0] <= serverLoads[1] ? 0 : 1;
+                    serverLoads[serverAssignments[i]] += agentMemory[i];
+                }
+            }
+        }
+
+        // Local search optimization
+        bool improved;
+        do {
+            improved = false;
+            for (int i = 0; i < numAgents; i++) {
+                int originalServer = serverAssignments[i];
+                int targetServer = 1 - originalServer;
+
+                // Try swapping to other server
+                serverLoads[originalServer] -= agentMemory[i];
+                serverLoads[targetServer] += agentMemory[i];
+                serverAssignments[i] = targetServer;
+
+                int newCost = calculateTotalCost();
+                if (isValidAssignment(serverLoads) &&
+                    newCost < calculateTotalCost()) {
+                    improved = true;
+                } else {
+                    // Revert if no improvement
+                    serverLoads[targetServer] -= agentMemory[i];
+                    serverLoads[originalServer] += agentMemory[i];
+                    serverAssignments[i] = originalServer;
+                }
+            }
+        } while (improved);
+    }
+
+    // Perform k-way partitioning
+    void kWayPartition() {
+        // Calculate minimum number of servers needed based on total memory
+        long long totalMemory = 0;
+        for (int mem : agentMemory) {
+            totalMemory += mem;
+        }
+        int minServers = (totalMemory + maxDiskCapacity - 1) / maxDiskCapacity;
+
+        // Initialize with greedy assignment to minServers
+        vector<int> serverLoads(minServers, 0);
+        for (int i = 0; i < numAgents; i++) {
+            // Find server with minimum load that can accommodate this agent
+            int bestServer = -1;
+            int minLoad = maxDiskCapacity + 1;
+
+            for (int j = 0; j < minServers; j++) {
+                if (serverLoads[j] + agentMemory[i] <= maxDiskCapacity &&
+                    serverLoads[j] < minLoad) {
+                    minLoad = serverLoads[j];
+                    bestServer = j;
+                }
+            }
+
+            if (bestServer == -1) {
+                // Need to add new server
+                serverLoads.push_back(0);
+                bestServer = serverLoads.size() - 1;
+            }
+
+            serverAssignments[i] = bestServer;
+            serverLoads[bestServer] += agentMemory[i];
+        }
+
+        // Local search optimization
+        bool improved;
+        do {
+            improved = false;
+            for (int i = 0; i < numAgents; i++) {
+                int originalServer = serverAssignments[i];
+                int originalCost = calculateTotalCost();
+
+                // Try all other servers
+                for (int j = 0; j < serverLoads.size(); j++) {
+                    if (j != originalServer) {
+                        serverLoads[originalServer] -= agentMemory[i];
+                        serverLoads[j] += agentMemory[i];
+                        serverAssignments[i] = j;
+
+                        int newCost = calculateTotalCost();
+                        if (isValidAssignment(serverLoads) &&
+                            newCost < originalCost) {
+                            improved = true;
+                            break;
+                        } else {
+                            // Revert if no improvement
+                            serverLoads[j] -= agentMemory[i];
+                            serverLoads[originalServer] += agentMemory[i];
+                            serverAssignments[i] = originalServer;
+                        }
+                    }
+                }
+            }
+        } while (improved);
+    }
+
+   public:
+    bool readInput(const string& inputFile) {
+        ifstream fin(inputFile);
+        if (!fin) return false;
+
+        // Read max disk capacity
+        fin >> maxDiskCapacity;
+
+        string marker;
+        fin >> marker; // Read ".agent"
+
+        // Read agent information
+        fin >> numAgents;
+        agentMemory.resize(numAgents);
+        serverAssignments.resize(numAgents);
+        for (int i = 0; i < numAgents; i++) {
+            fin >> agentMemory[i];
+        }
+
+        fin >> marker; // Read ".team"
+
+        // Read team information
+        fin >> numTeams;
+        teams.resize(numTeams);
+        for (int i = 0; i < numTeams; i++) {
+            int teamSize;
+            fin >> teamSize;
+            teams[i].resize(teamSize);
+            for (int j = 0; j < teamSize; j++) {
+                fin >> teams[i][j];
+            }
+        }
+
+        fin.close();
+        return true;
+    }
+
+    void optimize() {
+        // Determine whether to use 2-way or k-way partitioning based on memory
+        // constraints
+        long long totalMemory = 0;
+        for (int mem : agentMemory) {
+            totalMemory += mem;
+        }
+
+        if (totalMemory <= 2 * maxDiskCapacity) {
+            twoWayPartition();
+        } else {
+            kWayPartition();
+        }
+    }
+
+    bool writeOutput(const string& outputFile) {
+        ofstream fout(outputFile);
+        if (!fout) return false;
+
+        // Calculate total cost
+        int totalCost = calculateTotalCost();
+
+        // Find number of servers used
+        int numServers = 0;
+        for (int server : serverAssignments) {
+            numServers = max(numServers, server + 1);
+        }
+
+        // Write output
+        fout << totalCost << endl;
+        fout << numServers << endl;
+        for (int assignment : serverAssignments) {
+            fout << assignment << endl;
+        }
+
+        fout.close();
+        return true;
+    }
+};
+
+int main(int argc, char* argv[]) {
+    if (argc != 3) {
+        cerr << "Usage: " << argv[0] << " <input_file> <output_file>" << endl;
+        return 1;
+    }
+
+    DeploymentOptimizer optimizer;
+
+    // Read input
+    if (!optimizer.readInput(argv[1])) {
+        cerr << "Error reading input file" << endl;
+        return 1;
+    }
+
+    // Perform optimization
+    optimizer.optimize();
+
+    // Write output
+    if (!optimizer.writeOutput(argv[2])) {
+        cerr << "Error writing output file" << endl;
+        return 1;
+    }
+
+    return 0;
+}
