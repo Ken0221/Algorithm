@@ -19,6 +19,8 @@ class DeploymentOptimizer {
     int numAgents;
     int numTeams;
 
+    int bestCost;
+
     // Helper function to calculate cost for a team
     int calculateTeamCost(const vector<int>& team) {
         set<int> serversUsed;
@@ -50,6 +52,7 @@ class DeploymentOptimizer {
 
     // Perform 2-way partitioning
     void twoWayPartition() {
+        cout << "Performing 2-way partitioning" << endl;
         vector<int> serverLoads(2, 0);
 
         // Initial greedy assignment
@@ -100,9 +103,11 @@ class DeploymentOptimizer {
 
         // Local search optimization
         bool improved;
+        bestCost = calculateTotalCost();
         do {
             improved = false;
             for (int i = 0; i < numAgents; i++) {
+                int orgCost = calculateTotalCost();
                 int originalServer = serverAssignments[i];
                 int targetServer = 1 - originalServer;
 
@@ -112,9 +117,9 @@ class DeploymentOptimizer {
                 serverAssignments[i] = targetServer;
 
                 int newCost = calculateTotalCost();
-                if (isValidAssignment(serverLoads) &&
-                    newCost < calculateTotalCost()) {
+                if (isValidAssignment(serverLoads) && newCost < orgCost) {
                     improved = true;
+                    bestCost = newCost;
                 } else {
                     // Revert if no improvement
                     serverLoads[targetServer] -= agentMemory[i];
@@ -127,6 +132,7 @@ class DeploymentOptimizer {
 
     // Perform k-way partitioning
     void kWayPartition() {
+        cout << "Performing k-way partitioning" << endl;
         // Calculate minimum number of servers needed based on total memory
         long long totalMemory = 0;
         for (int mem : agentMemory) {
@@ -163,9 +169,10 @@ class DeploymentOptimizer {
         bool improved;
         do {
             improved = false;
+            bestCost = calculateTotalCost();
             for (int i = 0; i < numAgents; i++) {
                 int originalServer = serverAssignments[i];
-                int originalCost = calculateTotalCost();
+                int orgCost = calculateTotalCost();
 
                 // Try all other servers
                 for (int j = 0; j < serverLoads.size(); j++) {
@@ -176,8 +183,9 @@ class DeploymentOptimizer {
 
                         int newCost = calculateTotalCost();
                         if (isValidAssignment(serverLoads) &&
-                            newCost < originalCost) {
+                            newCost < orgCost) {
                             improved = true;
+                            bestCost = newCost;
                             break;
                         } else {
                             // Revert if no improvement

@@ -1,0 +1,52 @@
+void dfsKWay(int idx, vector& serverLoads, int maxServers) {
+        if (idx == numAgents) {
+            if (isValidAssignment(serverLoads)) {
+                int cost = calculateTotalCost();
+                if (cost < bestCostKWay) {
+                    bestCostKWay = cost;
+                    bestAssignmentsKWay = serverAssignments;
+                }
+            }
+            return;
+        }
+
+        for (int s = 0; s < maxServers; s++) {
+            // 將 agent idx 分到 server s
+            serverAssignments[idx] = s;
+            serverLoads[s] += agentMemory[idx];
+
+            // 如果容量沒超過，就繼續遞迴
+            if (serverLoads[s] <= maxDiskCapacity) {
+                dfsKWay(idx + 1, serverLoads, maxServers);
+            }
+
+            // 還原
+            serverLoads[s] -= agentMemory[idx];
+        }
+    }
+
+    void kWayPartition() {
+        cout << "Performing k-way partitioning (Complete Search)" << endl;
+
+        long long totalMemory = 0;
+        for (int mem : agentMemory) {
+            totalMemory += mem;
+        }
+        // 最少需要的server數量，maxDiskCapacity - 1 是為了無條件進位
+        int minServers = (totalMemory + maxDiskCapacity - 1) / maxDiskCapacity;
+        // 最多 numAgents 台 (每個 agent 都擁有自己的server)
+        int maxServers = numAgents;
+        // cout << maxServers << " servers will be used at most" << endl;
+
+        bestAssignmentsKWay.assign(numAgents, -1);
+        bestCostKWay = INT_MAX;
+
+        for (int k = minServers; k <= maxServers; k++) {
+            cout << k << endl;
+            vector serverLoads(k, 0);
+            dfsKWay(0, serverLoads, k);
+        }
+
+        serverAssignments = bestAssignmentsKWay;
+        cout << "Best cost (k-way) = " << bestCostKWay << endl;
+    }
