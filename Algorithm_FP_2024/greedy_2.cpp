@@ -136,12 +136,12 @@ class DeploymentOptimizer {
                 } else {
                     cout << "error" << endl;
                 }
+                auto sort_current_time = chrono::high_resolution_clock::now();
+                auto duration = chrono::duration_cast<chrono::milliseconds>(
+                    sort_current_time - sort_start_time);
+                // cout << "Spent time: " << duration.count() << " ms" << endl;
+                spentTime = duration.count();
             }
-            auto sort_current_time = chrono::high_resolution_clock::now();
-            auto duration = chrono::duration_cast<chrono::milliseconds>(
-                sort_current_time - sort_start_time);
-            // cout << "Spent time: " << duration.count() << " ms" << endl;
-            spentTime = duration.count();
             // cout << "Spent time: " << spentTime << " ms" << endl;
 
             // Local search optimization
@@ -195,8 +195,6 @@ class DeploymentOptimizer {
         int minServers = (totalMemory + maxDiskCapacity - 1) / maxDiskCapacity;
 
         // Initialize with greedy assignment to minServers
-        auto sort_start_time = chrono::high_resolution_clock::now();
-        int spentTime = 0;
         vector<int> serverLoads(minServers, 0);
         for (int i = 0; i < numAgents; i++) {
             // Find server with minimum load that can accommodate this agent
@@ -219,17 +217,10 @@ class DeploymentOptimizer {
 
             serverAssignments[i] = bestServer;
             serverLoads[bestServer] += agentMemory[i];
-            auto sort_current_time = chrono::high_resolution_clock::now();
-            auto duration = chrono::duration_cast<chrono::milliseconds>(
-                sort_current_time - sort_start_time);
-            // cout << "Spent time: " << duration.count() << " ms" << endl;
-            spentTime = duration.count();
         }
 
         // Local search optimization
         bool improved;
-        bool flag = false;
-        auto start_time = chrono::high_resolution_clock::now();
         do {
             improved = false;
             bestCost = calculateTotalCost();
@@ -257,17 +248,6 @@ class DeploymentOptimizer {
                             serverAssignments[i] = originalServer;
                         }
                     }
-                    auto current_time = chrono::high_resolution_clock::now();
-                    auto duration = chrono::duration_cast<chrono::milliseconds>(
-                        current_time - start_time);
-                    if (duration.count() > 6800000 - spentTime) {
-                        improved = false;
-                        flag = true;
-                        break;
-                    }
-                }
-                if (flag) {
-                    break;
                 }
             }
         } while (improved);
@@ -375,13 +355,12 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // auto start_time = chrono::high_resolution_clock::now();
+    auto start_time = chrono::high_resolution_clock::now();
     optimizer.optimize();
-    // auto end_time = chrono::high_resolution_clock::now();
-    // auto duration = chrono::duration_cast<chrono::milliseconds>(end_time -
-    // start_time);
-
-    // cout << "Execution Time: " << duration.count() << " ms\n";
+    auto end_time = chrono::high_resolution_clock::now();
+    auto duration =
+        chrono::duration_cast<chrono::milliseconds>(end_time - start_time);
+    cout << "Execution Time: " << duration.count() << " ms\n";
 
     if (!optimizer.writeOutput(argv[2])) {
         cerr << "Error writing output file" << endl;
